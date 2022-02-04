@@ -1,0 +1,69 @@
+### PRScs ###
+
+https://github.com/getian107/PRScs
+
+# preparation
+# miniconda
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+
+# install conda
+bash Miniconda3-latest-Linux-x86_64.sh
+
+#creat environment
+conda creat -n PRScs
+
+# activate env
+conda activate PRScs
+
+# download Python script
+# Reference genome
+wget https://www.dropbox.com/s/mt6var0z96vb6fv/ldblk_1kg_eur.tar.gz
+tar -zxvf ldblk_1kg_eur.tar.gz
+
+# Python package  (scipy & h5py)
+python -m pip install --user numpy scipy matplotlib ipython jupyter pandas sympy nose
+conda install h5py
+
+# summary data must look like this, and end up with .txt
+#SNP          A1   A2   BETA/OR      P
+#rs4970383    C    A    -0.0064   4.7780e-01
+#rs4475691    C    T    -0.0145   1.2450e-01
+#rs13302982   A    G    -0.0232   2.4290e-01
+
+
+# download your GWAS summary stat for GWAS catalog (eg. GCST90027161_buildGRCh38.tsv) and extract the corresponding columns
+awk '{print $1,$5,$6,$7,$2}' GCST90027161_buildGRCh38.tsv > temp1.tsv  
+
+# rename column
+sed -e '1s/variant_id/SNP/' -e '1s/effect_allele/A1/' -e '1s/other_allele/A2/' -e '1s/beta/BETA/' -e '1s/p_value/P/' temp1.tsv > temp2.txt
+
+# set threads as 16
+export MKL_NUM_THREADS=$16
+export NUMEXPR_NUM_THREADS=$16
+export OMP_NUM_THREADS=$16
+
+# Run
+for i in {1..22}
+do
+python /home/yang/software/PRScs/PRScs.py \
+--ref_dir=/home/yang/software/PRScs/ref_data/ldblk_1kg_eur \
+--bim_prefix=/home/yang/projects/data_important/PRS_CS_Data \
+--sst_file=/your_summary_stats \
+--n_gwas=408112 \
+--chrom=$i \
+--out_dir=/home/yang/projects/5.\ Eosinophils\ count\ PRS/result/eos_count
+done
+
+#combine files
+cat eos_count_pst_eff_a1_b0.5_phiauto_chr{1..22}.txt > all.txt
+
+# remove duplicated snps otherwise a error will be reported
+awk '{seen[$2]++; if(seen[$2]==1){ print}}' all.txt > no_dup.txt
+
+# calculate
+plink --bfile PRS_CS_Data --score no_dup.txt 2 4 6 sum --out prs
+# out prs.profile 
+
+# read
+score <- read.table("prs.profile",header=T) %>% 
+  dplyr::select(ABCNO=IID,SCORESUM)
